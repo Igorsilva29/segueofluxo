@@ -30,7 +30,7 @@ function imageUrls(html: string): string[] {
 function blocksFromHtml(html: string): PostBlock[] {
     const blocks: PostBlock[] = [];
     const re =
-        /<(p|h2|h3|blockquote)[^>]*>([\s\S]*?)<\/\1>|<(?:figure)[^>]*>[\s\S]*?<\/figure>/gi;
+        /<(p|h2|h3|blockquote)[^>]*>([\s\S]*?)<\/\1>|<(?:figure)[^>]*>[\s\S]*?<\/figure>|<iframe[^>]+src="[^"]*youtu[^"]*"[^>]*>(?:[\s\S]*?<\/iframe>)?/gi;
     let match: RegExpExecArray | null;
 
     while ((match = re.exec(html))) {
@@ -41,6 +41,12 @@ function blocksFromHtml(html: string): PostBlock[] {
             if (tag === "h2" || tag === "h3") blocks.push({ type: "heading", text });
             else if (tag === "blockquote") blocks.push({ type: "quote", text });
             else blocks.push({ type: "paragraph", text });
+            continue;
+        }
+
+        const video = youtubeId(match[1] ? (match[2] ?? "") : match[0]);
+        if (video) {
+            blocks.push({ type: "youtube", id: video, title: "Youtube" });
             continue;
         }
 
@@ -57,6 +63,13 @@ function blocksFromHtml(html: string): PostBlock[] {
     }
 
     return blocks;
+}
+
+function youtubeId(html: string): string | undefined {
+    const match = html.match(
+        /(?:youtube(?:-nocookie)?\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    );
+    return match?.[1];
 }
 
 function asCategory(name: string): Category {
@@ -105,7 +118,7 @@ function mapPost(wp: {
         author: wp._embedded?.author?.[0]?.name ?? "Redação Segue o Fluxo",
         date: wp.date,
         readingTime: readingTimeFrom(body),
-        city,
+        ...(city ? { city } : {}),
         artistSlugs: [],
         content,
     };
