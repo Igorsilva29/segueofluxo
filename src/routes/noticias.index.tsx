@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CATEGORIES, getPosts } from "@/data/mockData";
+import { getPosts, getCategories } from "@/data/wordpress";
 import { NewsCard } from "@/components/NewsCard";
 
 export const Route = createFileRoute("/noticias/")({
+  loader: async () => {
+    const [posts, wpCategories] = await Promise.all([getPosts(), getCategories()]);
+    return { posts, categories: ["Todas", ...wpCategories] };
+  },
+
   head: () => ({
     meta: [
       { title: "Notícias do funk — SEGUE O FLUXO" },
@@ -23,8 +28,10 @@ export const Route = createFileRoute("/noticias/")({
 });
 
 function NoticiasPage() {
+  const { posts, categories } = Route.useLoaderData();
   const [filter, setFilter] = useState<string>("Todas");
-  const list = getPosts(filter);
+  const list = 
+    filter === "Todas" ? posts : posts.filter((p) => p.category === filter);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
@@ -36,7 +43,7 @@ function NoticiasPage() {
       </h1>
 
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 py-6">
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <button
             key={c}
             onClick={() => setFilter(c)}

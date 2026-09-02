@@ -1,4 +1,4 @@
-import type { Category, Post, PostBlock } from "@/data/mockData";
+import type { Post, PostBlock } from "@/data/mockData";
 
 const WP = import.meta.env["VITE_WP_URL"] as string;
 
@@ -72,9 +72,14 @@ function youtubeId(html: string): string | undefined {
     return match?.[1];
 }
 
-function asCategory(name: string): Category {
-    const allowed: Category[] = ["Lançamentos", "Polêmicas", "Bailes", "Entrevistas"];
-    return allowed.includes(name as Category) ? (name as Category) : "Lançamentos";
+function categoryFromPost(wp: {
+    _embedded?: { "wp:term"? : { name: string; slug: string }[][] };
+}): string {
+    const terms = wp._embedded?.["wp:term"]?.[0] ?? [];
+    const real = terms.find(
+        (t) => t.slug !== "uncategorized" && t.name.toLowerCase() !== "uncategorized",
+    );
+    return real?.name ?? terms[0]?.name ?? "Sem categoria";
 }
 
 function readingTimeFrom(text: string): number {
@@ -93,7 +98,7 @@ function mapPost(wp: {
     _embedded?: {
         author?: { name: string }[];
         "wp:featuredmedia"?: { source_url: string }[];
-        "wp:term"?: { name: string }[][];
+        "wp:term"?: { name: string; slug: string }[][];
     };
 }): Post {
     const title = stripHtml(wp.title.rendered);
@@ -101,7 +106,6 @@ function mapPost(wp: {
     const body = content
         .map((b) => "text" in b ? b.text : "")
         .join(" ");
-    const categoryName = wp._embedded?.["wp:term"]?.[0]?.[0]?.name ?? "Lançamentos";
     const city = wp._embedded?.["wp:term"]?.[1]?.[0]?.name;
     const cover =
         wp._embedded?.["wp:featuredmedia"]?.[0]?.source_url ??
@@ -113,7 +117,7 @@ function mapPost(wp: {
         slug: wp.slug,
         title,
         excerpt: stripHtml(wp.excerpt.rendered) || body.slice(0, 160),
-        category: asCategory(categoryName),
+        category: categoryFromPost(wp),
         cover,
         author: wp._embedded?.author?.[0]?.name ?? "Redação Segue o Fluxo",
         date: wp.date,
@@ -146,4 +150,13 @@ export async function getRelatedPosts(post: Post, limit = 3): Promise<Post[]> {
         .filter((p) => p.id !== post.id)
         .sort((a, b) => (a.category === post.category ? -1 : 1))
         .slice(0, limit);
+}
+
+export async function getCategories(): Promise<string[]> {
+    const res = await fetch(`${WP}/categories?per_page=100`);
+    if (!res.ok) throw new Error(`WordPress ${res.status}`);
+    const data = (await res.json()) as { name: string; slug: string; count: number }[];
+    return data
+        .filter((c) => c.slug !== "uncategorized" && c.count > 0)
+        .map((c) => c.name);
 }

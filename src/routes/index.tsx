@@ -7,7 +7,7 @@ import {
   getArtists,
   timeAgo,
 } from "@/data/mockData";
-import { getPosts} from "@/data/wordpress";
+import { getPosts, getCategories } from "@/data/wordpress";
 import { NewsCard, NewsRowCard } from "@/components/NewsCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import {
@@ -22,8 +22,8 @@ import Autoplay from "embla-carousel-autoplay";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
-    const posts = await getPosts();
-    return { posts };
+    const [posts, wpCategories] = await Promise.all([getPosts(), getCategories()]);
+    return { posts, categories: ["Todas", ...wpCategories] };
   },
   head: () => ({
     meta: [
@@ -44,7 +44,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { posts } = Route.useLoaderData();
+  const { posts, categories } = Route.useLoaderData();
   const [filter, setFilter] = useState<string>("Todas");
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
@@ -176,7 +176,7 @@ function Home() {
       {/* Feed */}
       <section className="pb-12">
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-5">
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <button
               key={c}
               onClick={() => setFilter(c)}

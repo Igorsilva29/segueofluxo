@@ -27,6 +27,7 @@ import playlistCover from "@/assets/playlist.jpg";
 export const CATEGORIES = [
   "Todas",
   "Lançamentos",
+  "Novidades",
   "Polêmicas",
   "Bailes",
   "Entrevistas",
@@ -47,7 +48,7 @@ export interface Post {
   slug: string;
   title: string;
   excerpt: string;
-  category: Category;
+  category: string;
   badge?: "POLÊMICA" | "EXCLUSIVO";
   cover: string;
   author: string;
