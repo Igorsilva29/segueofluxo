@@ -35,8 +35,26 @@ function blocksFromHtml(html: string): PostBlock[] {
 
     while ((match = re.exec(html))) {
         if (match[1]) {
+            const inner = match[2] ?? "";
+            const igInText = instagramFrom(inner);
             const tag = match[1].toLowerCase();
-            const text = stripHtml(match[2] ?? "");
+            const text = stripHtml(inner);
+
+            if (igInText) {
+                const firstP = inner.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+                const quoteText = stripHtml(
+                    firstP?.[1] ?? inner.split(/<(?:figure|blockquote)/i)[0] ?? "",
+                ).trim();
+                if (quoteText) {
+                    blocks.push(
+                        tag === "blockquote"
+                            ? { type: "quote", text: quoteText }
+                            : { type: "paragraph", text: quoteText },
+                    );
+                }
+                blocks.push({ type: "instagram", url: igInText, caption: "" });
+                continue;
+            }
             if (!text) continue;
             if (tag === "h2" || tag === "h3") blocks.push({ type: "heading", text });
             else if (tag === "blockquote") blocks.push({ type: "quote", text });
@@ -47,6 +65,12 @@ function blocksFromHtml(html: string): PostBlock[] {
         const video = youtubeId(match[1] ? (match[2] ?? "") : match[0]);
         if (video) {
             blocks.push({ type: "youtube", id: video, title: "Youtube" });
+            continue;
+        }
+
+        const ig = instagramFrom(match[0]);
+        if (ig) {
+            blocks.push({ type: "instagram", url: ig, caption: "" });
             continue;
         }
 
@@ -70,6 +94,14 @@ function youtubeId(html: string): string | undefined {
         /(?:youtube(?:-nocookie)?\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
     );
     return match?.[1];
+}
+
+function instagramFrom(html: string): string | undefined {
+    const match = html.match(
+        /instagram\.com\/(reel|p|tv)\/([A-Za-z0-9_-]+)/i,
+    );
+    if (!match) return undefined;
+    return `https://www.instagram.com/${match[1]}/${match[2]}/`;
 }
 
 function categoryFromPost(wp: {
@@ -106,7 +138,12 @@ function mapPost(wp: {
     const body = content
         .map((b) => "text" in b ? b.text : "")
         .join(" ");
-    const city = wp._embedded?.["wp:term"]?.[1]?.[0]?.name;
+    const skipTags = new Set(["carrossel", "lateral"]);
+    const city = wp._embedded?.["wp:term"]?.[1]?.find((t) => {
+        const slug = t.slug.toLowerCase();
+        const name = t.name.toLowerCase();
+        return !skipTags.has(slug) && !skipTags.has(name);
+    })?.name;
     const cover =
         wp._embedded?.["wp:featuredmedia"]?.[0]?.source_url ??
         wp.jetpack_featured_media_url ??
@@ -133,7 +170,7 @@ export async function getPosts(category?: string): Promise<Post[]> {
     if (!res.ok) throw new Error(`WordPress ${res.status}`);
     const data = (await res.json()) as Parameters<typeof mapPost>[0][];
     const posts = data.map(mapPost);
-    if (!category || category === "Todas") return posts;
+    if (!category || category === "Últimas") return posts;
     return posts.filter((p) => p.category === category);
 }
 
@@ -159,4 +196,38 @@ export async function getCategories(): Promise<string[]> {
     return data
         .filter((c) => c.slug !== "uncategorized" && c.count > 0)
         .map((c) => c.name);
+}
+
+export async function searchPosts(q: string): Promise<Post[]> {
+    const query = q.trim();
+    if (query.length < 2) return [];
+    const res = await fetch(
+        `${WP}/posts?search=${encodeURIComponent(query)}&_embed&per_page=5`,
+    );
+    if (!res.ok) throw new Error(`WordPress ${res.status}`);
+    const data = (await res.json()) as Parameters<typeof mapPost>[0][];
+    return data.map(mapPost);
+}
+
+async function getPostsByTagSlug(slug: string, perPage = 3): Promise<Post[]> {
+    const tagRes = await fetch(`${WP}/tags?slug=${slug}`);
+    if (!tagRes.ok) throw new Error(`WordPress ${tagRes.status}`);
+    const tags = (await tagRes.json()) as { id: number }[];
+    const id = tags[0]?.id;
+    if (!id) return [];
+
+    const res = await fetch(
+        `${WP}/posts?tags=${id}&_embed&per_page=${perPage}`,
+    );
+    if (!res.ok) throw new Error(`WordPress ${res.status}`);
+    const data = (await res.json()) as Parameters<typeof mapPost>[0][];
+    return data.map(mapPost);
+}
+
+export function getCarouselPosts() {
+    return getPostsByTagSlug("carrossel", 3);
+}
+
+export function getSidebarPosts() {
+    return getPostsByTagSlug("lateral", 3);
 }

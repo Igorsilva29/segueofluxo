@@ -6,7 +6,7 @@ import { NewsCard } from "@/components/NewsCard";
 export const Route = createFileRoute("/noticias/")({
   loader: async () => {
     const [posts, wpCategories] = await Promise.all([getPosts(), getCategories()]);
-    return { posts, categories: ["Todas", ...wpCategories] };
+    return { posts, categories: ["Últimas", ...wpCategories] };
   },
 
   head: () => ({

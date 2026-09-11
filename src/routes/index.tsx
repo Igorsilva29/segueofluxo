@@ -7,7 +7,7 @@ import {
   getArtists,
   timeAgo,
 } from "@/data/mockData";
-import { getPosts, getCategories } from "@/data/wordpress";
+import { getPosts, getCategories, getCarouselPosts, getSidebarPosts } from "@/data/wordpress";
 import { NewsCard, NewsRowCard } from "@/components/NewsCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import {
@@ -22,8 +22,13 @@ import Autoplay from "embla-carousel-autoplay";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
-    const [posts, wpCategories] = await Promise.all([getPosts(), getCategories()]);
-    return { posts, categories: ["Todas", ...wpCategories] };
+    const [posts, wpCategories, featured, secondary] = await Promise.all([
+      getPosts(), 
+      getCategories(),
+      getCarouselPosts(),
+      getSidebarPosts(),
+    ]);
+    return { posts, featured, secondary, categories: ["Últimas Notícias", ...wpCategories] };
   },
   head: () => ({
     meta: [
@@ -43,17 +48,39 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
+function fillSlots<T extends { id: number }>(
+  tagged: T[],
+  pool: T[],
+  size: number,
+  used: Set<number>,
+) : T[] {
+  const slots = tagged.filter((p) => !used.has(p.id)).slice(0, size);
+  for (const p of slots) used.add(p.id);
+  for (const p of pool) {
+    if (slots.length >= size) break;
+    if (used.has(p.id)) continue;
+    slots.push(p);
+    used.add(p.id);
+  }
+  return slots;
+}
+
 function Home() {
-  const { posts, categories } = Route.useLoaderData();
-  const [filter, setFilter] = useState<string>("Todas");
+  const { posts, categories, featured: taggedFeatured, secondary: taggedSecondary } = Route.useLoaderData();
+  const [filter, setFilter] = useState<string>("Últimas Notícias");
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
-  const featured = posts.slice(0, 3);
-  const secondary = posts.slice(3, 6);
-  const featuredIds = new Set(featured.map((p) => p.id));
+
+  const used = new Set<number>();
+  const featured = fillSlots(taggedFeatured, posts, 3, used);
+  const secondary = fillSlots(taggedSecondary, posts, 3, used);
+  const featuredIds = new Set([...featured, ...secondary].map((p) => p.id));
   const feed = posts
-    .filter((p) => (filter === "Todas" ? true : p.category === filter))
+    .filter((p) =>
+      filter === "Últimas Notícias" ? true : p.category === filter,
+    )
     .filter((p) => !featuredIds.has(p.id));
+    
   const artists = getArtists();
 
   useEffect(() => {
@@ -97,6 +124,7 @@ function Home() {
               <CarouselContent className="-ml-0">
                 {featured.map((hero, index) => {
                   const Heading = index === 0 ? "h1" : "h2";
+                  const subtitle = hero.content.find((b) => b.type === "paragraph");
                   return (
                     <CarouselItem key={hero.id} className="pl-0">
                       <article className="group">
@@ -131,11 +159,11 @@ function Home() {
                               <span className="size-1 rounded-full bg-line" />
                               <span>{hero.readingTime} min de leitura</span>
                             </div>
-                            <Heading className="font-display text-3xl sm:text-4xl md:text-[2.6rem] font-bold leading-[1.05] tracking-tight text-balance">
+                            <Heading className="font-display text-3xl sm:text-4xl md:text-[2.6rem] font-bold leading-[1.05] tracking-tight text-pretty">
                               {hero.title}
                             </Heading>
                             <p className="mt-3 text-muted text-sm leading-relaxed max-w-xl">
-                              {hero.excerpt}
+                              {subtitle?.type === "paragraph" ? subtitle.text : hero.excerpt}
                             </p>
                           </div>
                         </Link>
@@ -165,10 +193,12 @@ function Home() {
             </Carousel>
           </div>
 
-          <div className="grid gap-4 content-start">
+          <div className="relative">
+            <div className="grid grid-rows-3 gap-2 aspect-[4/5] md:aspect-[7.7/9] min-h-0">
             {secondary.map((p) => (
               <NewsRowCard key={p.id} post={p} />
             ))}
+            </div>
           </div>
         </div>
       </section>
@@ -194,7 +224,7 @@ function Home() {
         {feed.length === 0 ? (
           <p className="text-sm text-muted">Nenhuma notícia nessa categoria ainda.</p>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {feed.map((p) => (
               <NewsCard key={p.id} post={p} />
             ))}

@@ -11,7 +11,7 @@ export function Footer() {
     <footer className="border-t border-line bg-surface/40">
       <div className="mx-auto max-w-6xl px-4 py-12 grid md:grid-cols-2 gap-10">
         <div>
-          <Logo className="text-lg" />
+          <Logo className="h-16" />
           <p className="text-muted text-sm mt-3 max-w-sm leading-relaxed">{SITE.tagline}</p>
           <div className="flex flex-wrap gap-2 mt-5">
             <a

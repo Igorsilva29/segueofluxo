@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, X, Instagram, Youtube, Music2, Send } from "lucide-react";
 import { Logo } from "./Logo";
-import { SITE, artists, posts } from "@/data/mockData";
+import { SITE, artists } from "@/data/mockData";
+import { searchPosts } from "@/data/wordpress";
+import type { Post } from "@/data/mockData";
 
 const NAV = [
   { to: "/", label: "Home" },
@@ -30,19 +32,25 @@ export function Header() {
     };
   }, [drawer, search]);
 
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (q.length < 2) return { posts: [], artists: [] };
-    return {
-      posts: posts.filter((p) => p.title.toLowerCase().includes(q)).slice(0, 5),
-      artists: artists.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 4),
-    };
-  }, [query]);
+  const [ hits, setHits] = useState<Post[]>([]);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      const q = query.trim();
+      if (q.length < 2) {
+        setHits([]);
+        return;
+      }
+      const t = setTimeout(() => {
+        searchPosts(q).then(setHits).catch(() => setHits([]));
+      }, 300);
+      return () => clearTimeout(t);
+    }, [query]);
 
   return (
     <>
       <header className="sticky top-0 z-40 bg-flow/90 backdrop-blur-md border-b border-line">
-        <div className="mx-auto max-w-6xl px-4 h-16 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center">
+        <div className="mx-auto max-w-6xl px-4 h-20 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center">
           <button
             onClick={() => setDrawer(true)}
             aria-label="Abrir menu"
@@ -73,6 +81,40 @@ export function Header() {
             >
               {search ? <X className="size-5" /> : <Search className="size-5" />}
             </button>
+            {search && query.trim().length >= 2 && (
+              <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 rounded-2xl border border-line bg-surface shadow-lg overflow-hidden">
+                {hits.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-muted">Nenhuma notícia encontrada.</p>
+                ) : (
+                  hits.map((p) => (
+                    <Link
+                      key={p.id}
+                      to="/noticias/$slug"
+                      params={{ slug: p.slug }}
+                      onClick={() => {
+                        setSearch(false);
+                        setQuery("");
+                      }}
+                      className="flex gap-3 px-3 py-2.5 hover:bg-flow/60 transition-colors border-b border-line last:border-b-0"
+                    >
+                      <img
+                        src={p.cover}
+                        alt=""
+                        className="w-14 h-20 rounded-lg object-cover shrink-0"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-[11px] font-bold uppercase text-mint">
+                          {p.category}
+                        </span>
+                        <span className="block text-sm font-semibold leading-snug line-clamp-2">
+                          {p.title}
+                        </span>
+                      </span>
+                    </Link>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -89,8 +131,8 @@ export function Header() {
         <aside
           className={`absolute inset-y-0 left-0 w-[86%] max-w-sm bg-surface border-r border-line flex flex-col transition-transform duration-300 ease-out ${drawer ? "translate-x-0" : "-translate-x-full"}`}
         >
-          <div className="flex items-center justify-between px-5 h-16 border-b border-line">
-            <Logo className="text-base" />
+          <div className="flex items-center justify-between px-5 h-20 border-b border-line">
+            <Logo className="h-14" />
             <button
               onClick={() => setDrawer(false)}
               aria-label="Fechar menu"

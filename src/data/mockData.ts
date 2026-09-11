@@ -25,7 +25,7 @@ import artistCover from "@/assets/artist-cover.jpg";
 import playlistCover from "@/assets/playlist.jpg";
 
 export const CATEGORIES = [
-  "Todas",
+  "Últimas",
   "Lançamentos",
   "Novidades",
   "Polêmicas",
@@ -33,7 +33,7 @@ export const CATEGORIES = [
   "Entrevistas",
 ] as const;
 
-export type Category = Exclude<(typeof CATEGORIES)[number], "Todas">;
+export type Category = Exclude<(typeof CATEGORIES)[number], "Últimas">;
 
 export type PostBlock =
   | { type: "paragraph"; text: string }
@@ -264,7 +264,7 @@ export const posts: Post[] = [
 /* ---- "API" layer: troque o corpo destas funções por fetch do WordPress ---- */
 
 export function getPosts(category?: string): Post[] {
-  if (!category || category === "Todas") return posts;
+  if (!category || category === "Últimas") return posts;
   return posts.filter((p) => p.category === category);
 }
 

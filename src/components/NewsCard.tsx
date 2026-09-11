@@ -26,7 +26,7 @@ export function NewsCard({ post }: { post: Post }) {
           >
             {post.category}
           </span>
-          <h3 className="font-display text-lg font-semibold leading-tight mt-2 text-balance">
+          <h3 className="font-display text-lg font-semibold leading-tight mt-2 text-pretty">
             {post.title}
           </h3>
           <div className="flex items-center gap-2 text-[12px] text-muted mt-3">
@@ -42,23 +42,23 @@ export function NewsCard({ post }: { post: Post }) {
 
 export function NewsRowCard({ post }: { post: Post }) {
   return (
-    <article className="rounded-2xl bg-surface border border-line p-4">
-      <Link to="/noticias/$slug" params={{ slug: post.slug }} className="flex gap-4">
+    <article className="h-full min-h-0 overflow-hidden rounded-2xl bg-surface border border-line p-3">
+      <Link to="/noticias/$slug" params={{ slug: post.slug }} className="flex gap-3 h-full min-h-0">
         <img
           src={post.cover}
           alt={post.title}
           loading="lazy"
           width={512}
           height={512}
-          className="w-20 self-stretch shrink-0 rounded-xl object-cover"
+          className="w-24 h-full shrink-0 rounded-md object-cover"
         />
-        <div className="min-w-0">
+        <div className="min-w-0 flex flex-col justify-center">
           <span
             className={`text-[11px] font-bold uppercase tracking-wider ${tagColor[post.category] ?? "text-mint"}`}
           >
             {post.category}
           </span>
-          <h3 className="font-display font-semibold text-[15px] leading-snug mt-1 text-balance">
+          <h3 className="font-display font-semibold text-[15px] leading-snug mt-1 text-clamp-3">
             {post.title}
           </h3>
           <p className="text-[12px] text-muted mt-1">{timeAgo(post.date)}</p>

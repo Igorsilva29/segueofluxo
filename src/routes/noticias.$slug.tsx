@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { Instagram, Link2, MapPin, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -46,8 +46,55 @@ function PostNotFound() {
   );
 }
 
+function InstagramEmbed({ url }: { url: string }) {
+  useEffect(() => {
+    const w = window as Window & {
+      instgrm?: { Embeds: { process: () => void } };
+    };
+    if (w.instgrm) {
+      w.instgrm.Embeds.process();
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "https://www.instagram.com/embed.js";
+    s.async = true;
+    document.body.appendChild(s);
+  }, [url]);
+
+  return (
+    <div className="flex justify-center">
+      <blockquote
+        className="instagram-media"
+        data-instgrm-permalink={url}
+        data-instgrm-version="14"
+        style={{ margin: 0, maxWidth: 640, width: "calc(100% - 2px)" }}
+      />
+    </div>
+  );
+}
+
 function PostPage() {
   const { post, related } = Route.useLoaderData();
+
+    useEffect(() => {
+      const key = `wp-view-${post.id}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+
+      const img = new Image();
+      const q = new URLSearchParams({
+        v: "wpcom",
+        blog: "257060611",
+        post: String(post.id),
+        tz: "-3",
+        srv: window.location.hostname,
+        rand: String(Date.now()),
+      });
+      img.src = `https://pixel.wp.com/g.gif?${q}`;
+    }, [post.id]);
+    
+  const firstParagraph = post.content.find((b) => b.type === "paragraph");
+  const subtitle = firstParagraph?.type === "paragraph" ? firstParagraph.text : undefined;
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   const mentioned = artists.filter((a) => post.artistSlugs.includes(a.slug));
@@ -75,7 +122,7 @@ function PostPage() {
           alt={post.title}
           width={1440}
           height={810}
-          className="w-full h-56 sm:h-[420px] object-cover object-[center_30%]"
+          className="w-full h-56 sm:h-[420px] object-cover object-[center_35%]"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-flow via-flow/30 to-transparent" />
       </div>
@@ -84,9 +131,14 @@ function PostPage() {
         <span className="inline-block px-3 py-1 rounded-full bg-blush text-flow text-[11px] font-bold uppercase tracking-wider">
           {post.badge ?? post.category}
         </span>
-        <h1 className="font-display text-3xl sm:text-4xl font-bold leading-[1.08] tracking-tight mt-4 text-balance">
+        <h1 className="font-display text-3xl sm:text-4xl font-bold leading-[1.08] tracking-tight mt-4">
           {post.title}
         </h1>
+        {subtitle && (
+          <p className="mt-3 text-lg sm:text-xl leading-snug text-muted">
+            {subtitle}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted mt-4">
           <span>{formatDate(post.date)}</span>
           <span className="size-1 rounded-full bg-line" />
@@ -126,7 +178,9 @@ function PostPage() {
         </div>
 
         <div className="mt-8 space-y-6">
-          {post.content.map((block, i) => {
+          {post.content 
+            .filter((b) => b !== firstParagraph)
+            .map((block, i) => {
             if (block.type === "paragraph")
               return (
                 <p key={i} className="text-[15px] leading-[1.85] text-ink/90">
@@ -145,7 +199,7 @@ function PostPage() {
                   key={i}
                   className="border-l-2 border-mint pl-5 py-1 font-display text-xl leading-snug text-balance"
                 >
-                  “{block.text}”
+                  {block.text}
                   {block.cite && (
                     <cite className="block mt-2 text-[12px] not-italic text-muted font-body">
                       {block.cite}
@@ -166,6 +220,10 @@ function PostPage() {
                   />
                 </div>
               );
+
+            if (block.type === "instagram")
+              return <InstagramEmbed key={i} url={block.url} />;
+
             if (block.type === "gallery")
               return (
                 <div
@@ -188,18 +246,7 @@ function PostPage() {
                   ))}
                 </div>
               );
-            return (
-              <a
-                key={i}
-                href={block.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-5 hover:border-mint transition-colors"
-              >
-                <Instagram className="size-5 text-blush shrink-0" />
-                <span className="text-sm">{block.caption}</span>
-              </a>
-            );
+              return null;
           })}
         </div>
 
