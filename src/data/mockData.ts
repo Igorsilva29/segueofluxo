@@ -294,7 +294,7 @@ export function getPostsByArtist(slug: string): Post[] {
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", {
     day: "2-digit",
-    month: "short",
+    month: "2-digit",
     year: "numeric",
   });
 }
@@ -305,5 +305,6 @@ export function timeAgo(iso: string): string {
   if (h < 1) return "agora há pouco";
   if (h < 24) return `há ${h}h`;
   const d = Math.round(h / 24);
+  if (d > 7) return formatDate(iso);
   return d === 1 ? "há 1 dia" : `há ${d} dias`;
 }
