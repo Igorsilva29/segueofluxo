@@ -41,7 +41,8 @@ export type PostBlock =
   | { type: "heading"; text: string }
   | { type: "youtube"; id: string; title: string }
   | { type: "instagram"; url: string; caption: string }
-  | { type: "gallery"; urls: string[] };
+  | { type: "gallery"; urls: string[] }
+  | { type: "spotify"; kind: "album" | "track" | "playlist" | "episode" | "show" | "artist"; id: string }
 
 export interface Post {
   id: number;

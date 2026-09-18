@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { MessageCircle, Play } from "lucide-react";
 import {
@@ -8,6 +8,7 @@ import {
   timeAgo,
 } from "@/data/mockData";
 import { getPosts, getCategories, getCarouselPosts, getSidebarPosts } from "@/data/wordpress";
+import { fetchMostViewedPosts } from "@/data/most-viewed";
 import { NewsCard, NewsRowCard } from "@/components/NewsCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import {
@@ -19,16 +20,18 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import Autoplay from "embla-carousel-autoplay";
+import recentes from "@/assets/RECENTES.svg";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
-    const [posts, wpCategories, featured, secondary] = await Promise.all([
-      getPosts(), 
+    const [posts, wpCategories, featured, secondary, mostViewed] = await Promise.all([
+      getPosts(),
       getCategories(),
       getCarouselPosts(),
       getSidebarPosts(),
+      fetchMostViewedPosts(),
     ]);
-    return { posts, featured, secondary, categories: ["Últimas Notícias", ...wpCategories] };
+    return { posts, featured, secondary, mostViewed, categories: ["Últimas Notícias", ...wpCategories] };
   },
   head: () => ({
     meta: [
@@ -65,11 +68,113 @@ function fillSlots<T extends { id: number }>(
   return slots;
 }
 
+function rotateCategoryToFront(items: string[], selected: string): string[] {
+  const index = items.indexOf(selected);
+  if (index <= 0) return items;
+  return [...items.slice(index), ...items.slice(0, index)];
+}
+
+const CATEGORY_FLIP_MS = 680;
+const CATEGORY_FLIP_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+/** Quanto cada categoria por baixo fica visível (px). Ajuste aqui o espaçamento. */
+const CATEGORY_PEEK_PX = 60;
+
 function Home() {
-  const { posts, categories, featured: taggedFeatured, secondary: taggedSecondary } = Route.useLoaderData();
+  const {
+    posts,
+    categories,
+    featured: taggedFeatured,
+    secondary: taggedSecondary,
+    mostViewed = [],
+  } = Route.useLoaderData();
   const [filter, setFilter] = useState<string>("Últimas Notícias");
+  const [categoryOrder, setCategoryOrder] = useState<string[]>(categories);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
+  const stackRef = useRef<HTMLDivElement>(null);
+  const chipRefs = useRef(new Map<string, HTMLElement>());
+  const flipFromRef = useRef<Map<string, DOMRect> | null>(null);
+
+  useEffect(() => {
+    setCategoryOrder((prev) => {
+      const kept = prev.filter((c) => categories.includes(c));
+      const added = categories.filter((c) => !kept.includes(c));
+      return [...kept, ...added];
+    });
+  }, [categories]);
+
+  useLayoutEffect(() => {
+    let stackEnd = 0;
+    let stackHeight = 0;
+
+    categoryOrder.forEach((c, i) => {
+      const el = chipRefs.current.get(c);
+      if (!el) return;
+
+      el.style.position = "absolute";
+      el.style.top = "0px";
+      el.style.marginLeft = "0px";
+
+      const width = el.offsetWidth;
+      stackHeight = Math.max(stackHeight, el.offsetHeight);
+
+      if (i === 0) {
+        el.style.left = "0px";
+        stackEnd = width;
+      } else {
+        // Só CATEGORY_PEEK_PX fica pra fora da chip anterior
+        el.style.left = `${stackEnd + CATEGORY_PEEK_PX - width}px`;
+        stackEnd += CATEGORY_PEEK_PX;
+      }
+    });
+
+    if (stackRef.current) {
+      stackRef.current.style.width = `${stackEnd}px`;
+      stackRef.current.style.height = `${stackHeight}px`;
+    }
+
+    const from = flipFromRef.current;
+    if (!from) return;
+    flipFromRef.current = null;
+
+    const animations: Animation[] = [];
+    chipRefs.current.forEach((el, key) => {
+      const prev = from.get(key);
+      if (!prev) return;
+      const next = el.getBoundingClientRect();
+      const dx = prev.left - next.left;
+      const dy = prev.top - next.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+      const anim = el.animate(
+        [
+          { transform: `translate(${dx}px, ${dy}px)` },
+          { transform: "translate(0px, 0px)" },
+        ],
+        {
+          duration: CATEGORY_FLIP_MS,
+          easing: CATEGORY_FLIP_EASE,
+          fill: "both",
+        },
+      );
+      animations.push(anim);
+    });
+
+    return () => {
+      animations.forEach((a) => a.cancel());
+    };
+  }, [categoryOrder]);
+
+  const selectCategory = (c: string) => {
+    setFilter(c);
+    const from = new Map<string, DOMRect>();
+    chipRefs.current.forEach((el, key) => {
+      from.set(key, el.getBoundingClientRect());
+    });
+    flipFromRef.current = from;
+    setCategoryOrder((prev) => rotateCategoryToFront(prev, c));
+  };
 
   const used = new Set<number>();
   const featured = fillSlots(taggedFeatured, posts, 3, used);
@@ -135,7 +240,7 @@ function Home() {
                               alt={hero.title}
                               width={1440}
                               height={810}
-                              className="w-full aspect-[16/10] md:aspect-[16/9] object-cover object-[center_30%]"
+                              className="w-full aspect-[16/10] md:aspect-[16/9] object-cover object-[center_30%] transition-transform duration-500 group-hover:scale-[1.03]"
                             />
                             {hero.badge && (
                               <div className="absolute top-4 left-4 flex gap-2">
@@ -193,40 +298,132 @@ function Home() {
             </Carousel>
           </div>
 
-          <div className="relative">
+          <div className="relative flex flex-col gap-4 min-w-0">
             <div className="grid grid-rows-3 gap-2 aspect-[4/5] md:aspect-[7.7/9] min-h-0">
-            {secondary.map((p) => (
-              <NewsRowCard key={p.id} post={p} />
-            ))}
+              {secondary.map((p) => (
+                <NewsRowCard key={p.id} post={p} />
+              ))}
             </div>
+
+            {mostViewed.length > 0 && (
+              <div className="pt-3 border-t border-line">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blush">
+                  Mais vistas
+                </span>
+                <ul className="mt-2 divide-y divide-line">
+                  {mostViewed.map((p) => (
+                    <li key={p.id} className="py-2 first:pt-0 last:pb-0">
+                      <Link
+                        to="/noticias/$slug"
+                        params={{ slug: p.slug }}
+                        className="font-display text-[13px] font-semibold leading-snug hover:text-mint transition-colors line-clamp-2"
+                      >
+                        {p.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </section>
 
       {/* Feed */}
-      <section className="pb-12">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-5">
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setFilter(c)}
-              className={`shrink-0 px-4 py-2 rounded-full text-[13px] transition-colors ${
-                filter === c
-                  ? "bg-mint text-flow font-semibold"
-                  : "bg-surface border border-line font-medium text-muted hover:text-ink"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+      <section className="relative pb-12 pt-10">
+        <img
+          src={recentes}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-0 z-0 w-full sm:w-[min(100%,1100px)] -translate-x-1/2 select-none opacity-90"
+        />
+        <nav
+          aria-label="Categorias"
+          className="relative z-10 overflow-visible px-1 pt-3 pb-10"
+          onMouseLeave={() => setHoveredCategory(null)}
+        >
+          <div ref={stackRef} className="relative">
+            {categoryOrder.map((c, i) => {
+              const active = filter === c;
+              const hovered = hoveredCategory === c;
+              const dimmed = Boolean(hoveredCategory) && !hovered;
+              const lifted = hovered || (!hoveredCategory && active);
+              const zIndex = hovered
+                ? 100
+                : active && !hoveredCategory
+                  ? 50
+                  : categoryOrder.length - i;
+              return (
+                <span
+                  key={c}
+                  ref={(el) => {
+                    if (el) chipRefs.current.set(c, el);
+                    else chipRefs.current.delete(c);
+                  }}
+                  className="absolute top-0 inline-flex will-change-transform"
+                  style={{ zIndex }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => selectCategory(c)}
+                    onMouseEnter={() => setHoveredCategory(c)}
+                    onMouseLeave={() =>
+                      setHoveredCategory((h) => (h === c ? null : h))
+                    }
+                    onFocus={() => setHoveredCategory(c)}
+                    onBlur={() =>
+                      setHoveredCategory((h) => (h === c ? null : h))
+                    }
+                    aria-pressed={active}
+                    className={`
+                      shrink-0 rounded-full border px-5 py-2.5
+                      text-[13px] font-display font-semibold tracking-tight whitespace-nowrap
+                      transition-[color,background-color,border-color,box-shadow,transform,filter]
+                      duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint
+                      ${
+                        lifted
+                          ? "-translate-y-0.5 scale-[1.05] shadow-[0_10px_28px_-12px_rgba(0,0,0,0.35)]"
+                          : "scale-100 shadow-none"
+                      }
+                      ${dimmed ? "brightness-[0.62]" : "brightness-100"}
+                      ${
+                        active
+                          ? "bg-mint text-flow border-mint"
+                          : "bg-surface text-muted border-line hover:text-ink hover:border-mint/70"
+                      }
+                    `}
+                  >
+                    {c}
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        </nav>
 
         {feed.length === 0 ? (
-          <p className="text-sm text-muted">Nenhuma notícia nessa categoria ainda.</p>
+          <p
+            key={`empty-${filter}`}
+            className="relative z-10 text-sm text-muted animate-in fade-in-0 duration-500"
+          >
+            Nenhuma notícia nessa categoria ainda.
+          </p>
         ) : (
-          <div className="grid sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {feed.map((p) => (
-              <NewsCard key={p.id} post={p} />
+          <div
+            key={filter}
+            className="relative z-10 grid sm:grid-cols-3 lg:grid-cols-4 gap-4"
+          >
+            {feed.map((p, i) => (
+              <div
+                key={p.id}
+                className="h-full animate-in fade-in-0 slide-in-from-bottom-3 fill-mode-both duration-500 ease-out"
+                style={{
+                  animationDelay: `${Math.min(i, 11) * 40}ms`,
+                }}
+              >
+                <NewsCard post={p} />
+              </div>
             ))}
           </div>
         )}

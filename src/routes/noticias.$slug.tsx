@@ -122,7 +122,7 @@ function PostPage() {
           alt={post.title}
           width={1440}
           height={810}
-          className="w-full h-56 sm:h-[420px] object-cover object-[center_35%]"
+          className="w-full h-56 sm:h-[420px] object-cover object-[center_25%]"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-flow via-flow/30 to-transparent" />
       </div>
@@ -223,6 +223,20 @@ function PostPage() {
 
             if (block.type === "instagram")
               return <InstagramEmbed key={i} url={block.url} />;
+
+            if (block.type === "spotify")
+              return (
+                <div key={i} className="rounded-2xl overflow-hidden border border-line">
+                  <iframe
+                    title="Spotify"
+                    src={`https://open.spotify.com/embed/${block.kind}/${block.id}?utm_source=generator`}
+                    loading="lazy"
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    className="w-full border-0"
+                    style={{ height: block.kind === "track" ? 152 : 452 }}
+                  />
+                </div>
+              );
 
             if (block.type === "gallery")
               return (

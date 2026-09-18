@@ -30,7 +30,7 @@ function imageUrls(html: string): string[] {
 function blocksFromHtml(html: string): PostBlock[] {
     const blocks: PostBlock[] = [];
     const re =
-        /<(p|h2|h3|blockquote)[^>]*>([\s\S]*?)<\/\1>|<(?:figure)[^>]*>[\s\S]*?<\/figure>|<iframe[^>]+src="[^"]*youtu[^"]*"[^>]*>(?:[\s\S]*?<\/iframe>)?/gi;
+        /<(p|h2|h3|blockquote)[^>]*>([\s\S]*?)<\/\1>|<(?:figure)[^>]*>[\s\S]*?<\/figure>|<iframe[^>]+src="[^"]*(?:youtu|spotify\.com)[^"]*"[^>]*>(?:[\s\S]*?<\/iframe>)?/gi;
     let match: RegExpExecArray | null;
 
     while ((match = re.exec(html))) {
@@ -39,6 +39,15 @@ function blocksFromHtml(html: string): PostBlock[] {
             const igInText = instagramFrom(inner);
             const tag = match[1].toLowerCase();
             const text = stripHtml(inner);
+            const spotifyInText = spotifyFrom(inner);
+            if (spotifyInText) {
+                blocks.push({
+                    type: "spotify",
+                    kind: spotifyInText.kind,
+                    id: spotifyInText.id,
+                });
+                continue;
+            }
 
             if (igInText) {
                 const firstP = inner.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
@@ -65,6 +74,12 @@ function blocksFromHtml(html: string): PostBlock[] {
         const video = youtubeId(match[1] ? (match[2] ?? "") : match[0]);
         if (video) {
             blocks.push({ type: "youtube", id: video, title: "Youtube" });
+            continue;
+        }
+
+        const spotify = spotifyFrom(match[0]);
+        if (spotify) {
+            blocks.push({ type: "spotify", kind: spotify.kind, id: spotify.id });
             continue;
         }
 
@@ -104,6 +119,19 @@ function instagramFrom(html: string): string | undefined {
     return `https://www.instagram.com/${match[1]}/${match[2]}/`;
 }
 
+function spotifyFrom(html: string):
+    | { kind: "album" | "track" | "playlist" | "episode" | "show" | "artist"; id:string }
+    | undefined {
+        const match = html.match(
+            /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:embed\/)?(album|track|playlist|episode|show|artist)\/([a-zA-z0-9]+)/i,
+        );
+        if (!match?.[1] || !match[2]) return undefined;
+        return {
+            kind: match[1]?.toLowerCase() as "album" | "track" | "playlist" | "episode" | "show" | "artist",
+            id: match[2],
+        };
+    }
+
 function categoryFromPost(wp: {
     _embedded?: { "wp:term"? : { name: string; slug: string }[][] };
 }): string {
@@ -138,7 +166,7 @@ function mapPost(wp: {
     const body = content
         .map((b) => "text" in b ? b.text : "")
         .join(" ");
-    const skipTags = new Set(["carrossel", "lateral"]);
+    const skipTags = new Set(["carrossel", "lateral", "mais-vistas"]);
     const city = wp._embedded?.["wp:term"]?.[1]?.find((t) => {
         const slug = t.slug.toLowerCase();
         const name = t.name.toLowerCase();
@@ -230,4 +258,138 @@ export function getCarouselPosts() {
 
 export function getSidebarPosts() {
     return getPostsByTagSlug("lateral", 3);
+}
+
+type TopPostRow = {
+    id: number;
+    title: string;
+    views?: number;
+};
+
+function decodeBase64(value: string): string {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    if (typeof atob === "function") {
+        return atob(normalized);
+    }
+    const Buf = (globalThis as { Buffer?: { from: (s: string, enc: string) => { toString: (e: string) => string } } }).Buffer;
+    if (Buf) return Buf.from(normalized, "base64").toString("utf8");
+    throw new Error("Sem decoder base64");
+}
+
+/** Tokens do WP.com têm # e $ — no .env isso quebra. Prefira WPCOM_STATS_TOKEN_B64. */
+function readStatsToken(): string {
+    const rawB64 = (
+        process.env["WPCOM_STATS_TOKEN_B64"] ??
+        (import.meta.env["WPCOM_STATS_TOKEN_B64"] as string | undefined) ??
+        ""
+    )
+        .trim()
+        .replace(/^["']|["']$/g, "");
+
+    if (rawB64) {
+        try {
+            return decodeBase64(rawB64).trim();
+        } catch (e) {
+            console.warn("[mostViewed] WPCOM_STATS_TOKEN_B64 inválido", e);
+        }
+    }
+
+    return (
+        process.env["WPCOM_STATS_TOKEN"] ??
+        (import.meta.env["WPCOM_STATS_TOKEN"] as string | undefined) ??
+        ""
+    )
+        .trim()
+        .replace(/^["']|["']$/g, "");
+}
+
+export async function getMostViewedPosts(limit = 5): Promise<Post[]> {
+    try {
+        const token = readStatsToken();
+        const blogId = (
+            process.env["WPCOM_BLOG_ID"] ??
+            (import.meta.env["WPCOM_BLOG_ID"] as string | undefined) ??
+            "257060611"
+        )
+            .trim()
+            .replace(/^["']|["']$/g, "");
+
+        if (!token) {
+            console.warn("[mostViewed] token ausente — usando tag mais-vistas");
+            return getPostsByTagSlug("mais-vistas", limit);
+        }
+
+        console.warn("[mostViewed] token ok, len", token.length);
+
+        const url =
+            `https://public-api.wordpress.com/rest/v1.1/sites/${encodeURIComponent(blogId)}/stats/top-posts` +
+            `?period=day&num=7&max=${limit}`;
+
+        const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+            const errText = await res.text();
+            console.warn(
+                "[mostViewed] API",
+                res.status,
+                errText.slice(0, 200),
+                `(token len ${token.length})`,
+            );
+            return getPostsByTagSlug("mais-vistas", limit);
+        }
+
+        const data = (await res.json()) as {
+            summary?: TopPostRow[] | { postviews?: TopPostRow[] };
+            days?:
+                | { postviews?: TopPostRow[] }[]
+                | Record<string, { postviews?: TopPostRow[] }>;
+        };
+
+        const dayList = Array.isArray(data.days)
+            ? data.days
+            : data.days
+              ? Object.values(data.days)
+              : [];
+
+        const rows: TopPostRow[] = Array.isArray(data.summary)
+            ? data.summary
+            : (data.summary?.postviews ??
+                dayList.flatMap((d) => d.postviews ?? []) ??
+                []);
+
+        const viewsById = new Map<number, number>();
+        for (const row of rows) {
+            const id = Number(row.id);
+            if (!Number.isFinite(id) || id <= 0) continue;
+            viewsById.set(id, (viewsById.get(id) ?? 0) + Number(row.views ?? 0));
+        }
+
+        const ids = [...viewsById.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([id]) => id)
+            .slice(0, limit);
+
+        console.warn("[mostViewed] rows", rows.length, "ids", ids);
+
+        if (ids.length === 0) {
+            return getPostsByTagSlug("mais-vistas", limit);
+        }
+
+        const posts: Post[] = [];
+        for (const id of ids) {
+            const resPost = await fetch(`${WP}/posts/${id}?_embed`);
+            if (!resPost.ok) continue;
+            const wp = (await resPost.json()) as Parameters<typeof mapPost>[0];
+            posts.push(mapPost(wp));
+        }
+        return posts.length > 0 ? posts : getPostsByTagSlug("mais-vistas", limit);
+    } catch (e) {
+        console.warn("[mostViewed] falhou, fallback tag", e);
+        try {
+            return await getPostsByTagSlug("mais-vistas", limit);
+        } catch {
+            return [];
+        }
+    }
 }
