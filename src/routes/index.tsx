@@ -4,10 +4,9 @@ import { MessageCircle, Play } from "lucide-react";
 import {
   CATEGORIES,
   SITE,
-  getArtists,
   timeAgo,
 } from "@/data/mockData";
-import { getPosts, getCategories, getCarouselPosts, getSidebarPosts } from "@/data/wordpress";
+import { getPosts, getCategories, getCarouselPosts, getSidebarPosts, getArtists } from "@/data/wordpress";
 import { fetchMostViewedPosts } from "@/data/most-viewed";
 import { NewsCard, NewsRowCard } from "@/components/NewsCard";
 import { ArtistCard } from "@/components/ArtistCard";
@@ -21,17 +20,32 @@ import {
 } from "@/components/ui/carousel";
 import Autoplay from "embla-carousel-autoplay";
 import recentes from "@/assets/RECENTES.svg";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
-    const [posts, wpCategories, featured, secondary, mostViewed] = await Promise.all([
-      getPosts(),
-      getCategories(),
-      getCarouselPosts(),
-      getSidebarPosts(),
-      fetchMostViewedPosts(),
-    ]);
-    return { posts, featured, secondary, mostViewed, categories: ["Últimas Notícias", ...wpCategories] };
+    const [posts, wpCategories, featured, secondary, mostViewed, artists] =
+      await Promise.all([
+        getPosts(),
+        getCategories(),
+        getCarouselPosts(),
+        getSidebarPosts(),
+        fetchMostViewedPosts(),
+        getArtists(),
+      ]);
+    return {
+      posts,
+      featured,
+      secondary,
+      mostViewed,
+      artists,
+      categories: ["Últimas Notícias", ...wpCategories],
+    };
   },
   head: () => ({
     meta: [
@@ -78,6 +92,8 @@ const CATEGORY_FLIP_MS = 680;
 const CATEGORY_FLIP_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** Quanto cada categoria por baixo fica visível (px). Ajuste aqui o espaçamento. */
 const CATEGORY_PEEK_PX = 60;
+/** No hover, fração do trecho escondido que desliza (o resto continua sob a de cima). */
+const CATEGORY_HOVER_REVEAL = 0.52;
 
 function Home() {
   const {
@@ -86,6 +102,7 @@ function Home() {
     featured: taggedFeatured,
     secondary: taggedSecondary,
     mostViewed = [],
+    artists = [],
   } = Route.useLoaderData();
   const [filter, setFilter] = useState<string>("Últimas Notícias");
   const [categoryOrder, setCategoryOrder] = useState<string[]>(categories);
@@ -94,6 +111,7 @@ function Home() {
   const [current, setCurrent] = useState(0);
   const stackRef = useRef<HTMLDivElement>(null);
   const chipRefs = useRef(new Map<string, HTMLElement>());
+  const chipWidthsRef = useRef(new Map<string, number>());
   const flipFromRef = useRef<Map<string, DOMRect> | null>(null);
 
   useEffect(() => {
@@ -117,6 +135,7 @@ function Home() {
       el.style.marginLeft = "0px";
 
       const width = el.offsetWidth;
+      chipWidthsRef.current.set(c, width);
       stackHeight = Math.max(stackHeight, el.offsetHeight);
 
       if (i === 0) {
@@ -185,8 +204,6 @@ function Home() {
       filter === "Últimas Notícias" ? true : p.category === filter,
     )
     .filter((p) => !featuredIds.has(p.id));
-    
-  const artists = getArtists();
 
   useEffect(() => {
     if (!api) return;
@@ -337,70 +354,84 @@ function Home() {
           aria-hidden
           className="pointer-events-none absolute left-1/2 top-0 z-0 w-full sm:w-[min(100%,1100px)] -translate-x-1/2 select-none opacity-90"
         />
-        <nav
-          aria-label="Categorias"
-          className="relative z-10 overflow-visible px-1 pt-3 pb-10"
-          onMouseLeave={() => setHoveredCategory(null)}
-        >
-          <div ref={stackRef} className="relative">
-            {categoryOrder.map((c, i) => {
-              const active = filter === c;
-              const hovered = hoveredCategory === c;
-              const dimmed = Boolean(hoveredCategory) && !hovered;
-              const lifted = hovered || (!hoveredCategory && active);
-              const zIndex = hovered
-                ? 100
-                : active && !hoveredCategory
-                  ? 50
-                  : categoryOrder.length - i;
-              return (
-                <span
-                  key={c}
-                  ref={(el) => {
-                    if (el) chipRefs.current.set(c, el);
-                    else chipRefs.current.delete(c);
-                  }}
-                  className="absolute top-0 inline-flex will-change-transform"
-                  style={{ zIndex }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => selectCategory(c)}
-                    onMouseEnter={() => setHoveredCategory(c)}
-                    onMouseLeave={() =>
-                      setHoveredCategory((h) => (h === c ? null : h))
-                    }
-                    onFocus={() => setHoveredCategory(c)}
-                    onBlur={() =>
-                      setHoveredCategory((h) => (h === c ? null : h))
-                    }
-                    aria-pressed={active}
-                    className={`
-                      shrink-0 rounded-full border px-5 py-2.5
-                      text-[13px] font-display font-semibold tracking-tight whitespace-nowrap
-                      transition-[color,background-color,border-color,box-shadow,transform,filter]
-                      duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
-                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint
-                      ${
-                        lifted
-                          ? "-translate-y-0.5 scale-[1.05] shadow-[0_10px_28px_-12px_rgba(0,0,0,0.35)]"
-                          : "scale-100 shadow-none"
-                      }
-                      ${dimmed ? "brightness-[0.62]" : "brightness-100"}
-                      ${
-                        active
-                          ? "bg-mint text-flow border-mint"
-                          : "bg-surface text-muted border-line hover:text-ink hover:border-mint/70"
-                      }
-                    `}
+        <TooltipProvider delayDuration={250}>
+          <nav
+            aria-label="Categorias"
+            className="relative z-10 overflow-visible px-1 pt-3 pb-10"
+            onMouseLeave={() => setHoveredCategory(null)}
+          >
+            <div ref={stackRef} className="relative">
+              {categoryOrder.map((c, i) => {
+                const active = filter === c;
+                const hovered = hoveredCategory === c;
+                const width = chipWidthsRef.current.get(c) ?? 0;
+                const hidden = Math.max(0, width - CATEGORY_PEEK_PX);
+                const slideX =
+                  hovered && i > 0 ? hidden * CATEGORY_HOVER_REVEAL : 0;
+                const zIndex = categoryOrder.length - i;
+                return (
+                  <span
+                    key={c}
+                    ref={(el) => {
+                      if (el) chipRefs.current.set(c, el);
+                      else chipRefs.current.delete(c);
+                    }}
+                    className="absolute top-0 inline-flex will-change-transform"
+                    style={{ zIndex }}
                   >
-                    {c}
-                  </button>
-                </span>
-              );
-            })}
-          </div>
-        </nav>
+                    <span
+                      className="inline-flex transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                      style={{
+                        transform: slideX
+                          ? `translateX(${slideX}px)`
+                          : undefined,
+                      }}
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={() => selectCategory(c)}
+                            onMouseEnter={() => setHoveredCategory(c)}
+                            onMouseLeave={() =>
+                              setHoveredCategory((h) => (h === c ? null : h))
+                            }
+                            onFocus={() => setHoveredCategory(c)}
+                            onBlur={() =>
+                              setHoveredCategory((h) => (h === c ? null : h))
+                            }
+                            aria-pressed={active}
+                            className={`
+                              shrink-0 rounded-full border px-5 py-2.5
+                              text-[13px] font-display font-semibold tracking-tight whitespace-nowrap
+                              transition-[color,background-color,border-color,box-shadow]
+                              duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint
+                              ${
+                                active
+                                  ? "bg-mint text-flow border-mint"
+                                  : "bg-surface text-muted border-line hover:text-ink hover:border-mint/70"
+                              }
+                            `}
+                          >
+                            {c}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="top"
+                          sideOffset={8}
+                          className="rounded-full border-0 bg-ink px-3 py-1.5 font-display text-[12px] font-semibold text-flow"
+                        >
+                          {c}
+                        </TooltipContent>
+                      </Tooltip>
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          </nav>
+        </TooltipProvider>
 
         {feed.length === 0 ? (
           <p

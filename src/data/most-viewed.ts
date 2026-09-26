@@ -9,7 +9,7 @@ type Cache = { expiresAt: number; data: Post[] };
 let cache: Cache | null = null;
 let inflight: Promise<Post[]> | null = null;
 
-async function getMostViewedPostsCached(limit = 5): Promise<Post[]> {
+async function getMostViewedPostsCached(limit = 4): Promise<Post[]> {
   const now = Date.now();
   if (cache && cache.expiresAt > now) {
     return cache.data;
@@ -31,5 +31,5 @@ async function getMostViewedPostsCached(limit = 5): Promise<Post[]> {
 
 /** Só no servidor — o token do Stats não existe no browser. */
 export const fetchMostViewedPosts = createServerFn({ method: "GET" }).handler(
-  async () => getMostViewedPostsCached(5),
+  async () => getMostViewedPostsCached(4),
 );

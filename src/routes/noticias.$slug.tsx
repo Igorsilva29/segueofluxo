@@ -2,16 +2,19 @@ import { useState, useEffect } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { Instagram, Link2, MapPin, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
-import { formatDate, artists } from "@/data/mockData";
-import { getPostBySlug, getRelatedPosts } from "@/data/wordpress";
+import { formatDate } from "@/data/mockData";
+import { getPostBySlug, getRelatedPosts, getArtists } from "@/data/wordpress";
 import { NewsCard } from "@/components/NewsCard";
 
 export const Route = createFileRoute("/noticias/$slug")({
   loader: async ({ params }) => {
     const post = await getPostBySlug(params.slug);
     if (!post) throw notFound();
-    const related = await getRelatedPosts(post);
-    return { post, related };
+    const [related, artists] = await Promise.all([
+      getRelatedPosts(post),
+      getArtists(),
+    ]);
+    return { post, related, artists };
   },
   head: ({ loaderData }) => {
     if (!loaderData) {
@@ -74,7 +77,7 @@ function InstagramEmbed({ url }: { url: string }) {
 }
 
 function PostPage() {
-  const { post, related } = Route.useLoaderData();
+  const { post, related, artists = [] } = Route.useLoaderData();
 
     useEffect(() => {
       const key = `wp-view-${post.id}`;

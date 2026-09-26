@@ -1,4 +1,4 @@
-import type { Post, PostBlock } from "@/data/mockData";
+import type { Artist, Post, PostBlock } from "@/data/mockData";
 
 const WP = import.meta.env["VITE_WP_URL"] as string;
 
@@ -147,24 +147,64 @@ function readingTimeFrom(text: string): number {
     return Math.max(1, Math.round(words / 200));
 }
 
-function mapPost(wp: {
-    id: number;
-    slug: string;
-    date: string;
-    title: { rendered: string };
-    excerpt: { rendered: string };
-    content: { rendered: string };
-    jetpack_featured_media_url?: string;
-    _embedded?: {
-        author?: { name: string }[];
-        "wp:featuredmedia"?: { source_url: string }[];
-        "wp:term"?: { name: string; slug: string }[][];
-    };
-}): Post {
+let artistIdToSlugCache: Map<number, string> | null = null;
+
+async function getArtistIdToSlug(): Promise<Map<number, string>> {
+    if (artistIdToSlugCache) return artistIdToSlugCache;
+    const res = await fetch(`${WP}/artista?per_page=100&_fields=id,slug`);
+    if (!res.ok) {
+        artistIdToSlugCache = new Map();
+        return artistIdToSlugCache;
+    }
+    const data = (await res.json()) as { id: number; slug: string }[];
+    artistIdToSlugCache = new Map(data.map((a) => [a.id, a.slug]));
+    return artistIdToSlugCache;
+}
+
+function artistSlugsFromAcf(
+    acf: unknown,
+    idToSlug: Map<number, string>,
+): string[] {
+    if (!acf || typeof acf !== "object" || Array.isArray(acf)) return [];
+    const raw = (acf as { artistas?: unknown }).artistas;
+    if (!Array.isArray(raw)) return [];
+
+    return raw
+        .map((item) => {
+            if (typeof item === "number") return idToSlug.get(item) ?? "";
+            if (typeof item === "string" && /^\d+$/.test(item)) {
+                return idToSlug.get(Number(item)) ?? "";
+            }
+            if (typeof item === "object" && item && "slug" in item) {
+                return String((item as { slug: string }).slug);
+            }
+            return "";
+        })
+        .filter(Boolean);
+}
+
+function mapPost(
+    wp: {
+        id: number;
+        slug: string;
+        date: string;
+        title: { rendered: string };
+        excerpt: { rendered: string };
+        content: { rendered: string };
+        jetpack_featured_media_url?: string;
+        acf?: unknown;
+        _embedded?: {
+            author?: { name: string }[];
+            "wp:featuredmedia"?: { source_url: string }[];
+            "wp:term"?: { name: string; slug: string }[][];
+        };
+    },
+    idToSlug: Map<number, string> = new Map(),
+): Post {
     const title = stripHtml(wp.title.rendered);
     const content = blocksFromHtml(wp.content.rendered);
     const body = content
-        .map((b) => "text" in b ? b.text : "")
+        .map((b) => ("text" in b ? b.text : ""))
         .join(" ");
     const skipTags = new Set(["carrossel", "lateral", "mais-vistas"]);
     const city = wp._embedded?.["wp:term"]?.[1]?.find((t) => {
@@ -188,25 +228,31 @@ function mapPost(wp: {
         date: wp.date,
         readingTime: readingTimeFrom(body),
         ...(city ? { city } : {}),
-        artistSlugs: [],
+        artistSlugs: artistSlugsFromAcf(wp.acf, idToSlug),
         content,
     };
 }
 
 export async function getPosts(category?: string): Promise<Post[]> {
-    const res = await fetch(`${WP}/posts?_embed&per_page=20`);
+    const [res, idToSlug] = await Promise.all([
+        fetch(`${WP}/posts?_embed&per_page=20`),
+        getArtistIdToSlug(),
+    ]);
     if (!res.ok) throw new Error(`WordPress ${res.status}`);
     const data = (await res.json()) as Parameters<typeof mapPost>[0][];
-    const posts = data.map(mapPost);
+    const posts = data.map((p) => mapPost(p, idToSlug));
     if (!category || category === "Últimas") return posts;
     return posts.filter((p) => p.category === category);
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | undefined> {
-    const res = await fetch(`${WP}/posts?slug=${slug}&_embed`);
+    const [res, idToSlug] = await Promise.all([
+        fetch(`${WP}/posts?slug=${slug}&_embed`),
+        getArtistIdToSlug(),
+    ]);
     if (!res.ok) throw new Error(`WordPress ${res.status}`);
     const data = (await res.json()) as Parameters<typeof mapPost>[0][];
-    return data[0] ? mapPost(data[0]) : undefined;
+    return data[0] ? mapPost(data[0], idToSlug) : undefined;
 }
 
 export async function getRelatedPosts(post: Post, limit = 3): Promise<Post[]> {
@@ -229,12 +275,15 @@ export async function getCategories(): Promise<string[]> {
 export async function searchPosts(q: string): Promise<Post[]> {
     const query = q.trim();
     if (query.length < 2) return [];
-    const res = await fetch(
-        `${WP}/posts?search=${encodeURIComponent(query)}&_embed&per_page=5`,
-    );
+    const [res, idToSlug] = await Promise.all([
+        fetch(
+            `${WP}/posts?search=${encodeURIComponent(query)}&_embed&per_page=5`,
+        ),
+        getArtistIdToSlug(),
+    ]);
     if (!res.ok) throw new Error(`WordPress ${res.status}`);
     const data = (await res.json()) as Parameters<typeof mapPost>[0][];
-    return data.map(mapPost);
+    return data.map((p) => mapPost(p, idToSlug));
 }
 
 async function getPostsByTagSlug(slug: string, perPage = 3): Promise<Post[]> {
@@ -244,12 +293,13 @@ async function getPostsByTagSlug(slug: string, perPage = 3): Promise<Post[]> {
     const id = tags[0]?.id;
     if (!id) return [];
 
-    const res = await fetch(
-        `${WP}/posts?tags=${id}&_embed&per_page=${perPage}`,
-    );
+    const [res, idToSlug] = await Promise.all([
+        fetch(`${WP}/posts?tags=${id}&_embed&per_page=${perPage}`),
+        getArtistIdToSlug(),
+    ]);
     if (!res.ok) throw new Error(`WordPress ${res.status}`);
     const data = (await res.json()) as Parameters<typeof mapPost>[0][];
-    return data.map(mapPost);
+    return data.map((p) => mapPost(p, idToSlug));
 }
 
 export function getCarouselPosts() {
@@ -376,12 +426,13 @@ export async function getMostViewedPosts(limit = 5): Promise<Post[]> {
             return getPostsByTagSlug("mais-vistas", limit);
         }
 
+        const idToSlug = await getArtistIdToSlug();
         const posts: Post[] = [];
         for (const id of ids) {
             const resPost = await fetch(`${WP}/posts/${id}?_embed`);
             if (!resPost.ok) continue;
             const wp = (await resPost.json()) as Parameters<typeof mapPost>[0];
-            posts.push(mapPost(wp));
+            posts.push(mapPost(wp, idToSlug));
         }
         return posts.length > 0 ? posts : getPostsByTagSlug("mais-vistas", limit);
     } catch (e) {
@@ -392,4 +443,124 @@ export async function getMostViewedPosts(limit = 5): Promise<Post[]> {
             return [];
         }
     }
+}
+
+type WpArtist = {
+    id: number;
+    slug: string;
+    title: { rendered: string };
+    content: { rendered: string };
+    featured_media?: number;
+    acf?: {
+        role?: string;
+        city?: string;
+        bio?: string;
+        whatsapp?: string;
+        email?: string;
+        instagram?: string;
+        youtube?: string;
+        spotify?: string;
+        tiktok?: string;
+        deezer?: string;
+        youtube_subscribers?: number | string;
+        cover?: string | number | { url?: string } | false | null;
+    };
+    _embedded?: {
+        "wp:featuredmedia"?: { id?: number; source_url: string }[];
+    };
+};
+
+async function resolveMediaUrl(
+    value: string | number | { url?: string } | false | null | undefined,
+    fallback: string,
+): Promise<string> {
+    if (!value) return fallback;
+    if (typeof value === "string") {
+        if (value.startsWith("http")) return value;
+        return fallback;
+    }
+    if (typeof value === "object" && typeof value.url === "string" && value.url) {
+        return value.url;
+    }
+    if (typeof value === "number" && value > 0) {
+        try {
+            const res = await fetch(`${WP}/media/${value}`);
+            if (res.ok) {
+                const media = (await res.json()) as { source_url?: string };
+                if (media.source_url) return media.source_url;
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+    return fallback;
+}
+
+async function mapArtist(wp: WpArtist): Promise<Artist> {
+    const acf = wp.acf && !Array.isArray(wp.acf) ? wp.acf : {};
+    const avatar =
+        wp._embedded?.["wp:featuredmedia"]?.[0]?.source_url ?? "";
+    const cover = await resolveMediaUrl(acf.cover, avatar);
+    const bio =
+        (acf.bio?.trim() || stripHtml(wp.content.rendered) || "").trim();
+
+    const socials: Artist["socials"] = {};
+    if (acf.instagram) socials.instagram = acf.instagram;
+    if (acf.youtube) socials.youtube = acf.youtube;
+    if (acf.spotify) socials.spotify = acf.spotify;
+    if (acf.tiktok) socials.tiktok = acf.tiktok;
+    if (acf.deezer) socials.deezer = acf.deezer;
+
+    const youtubeSubscribers = Number(acf.youtube_subscribers);
+    const insights: Artist["insights"] = {};
+    if (Number.isFinite(youtubeSubscribers) && youtubeSubscribers > 0) {
+        insights.youtubeSubscribers = youtubeSubscribers;
+    }
+
+    return {
+        id: wp.id,
+        slug: wp.slug,
+        name: stripHtml(wp.title.rendered),
+        role: acf.role?.trim() || "Artista",
+        avatar,
+        cover: cover || avatar,
+        bio,
+        city: acf.city?.trim() || "",
+        whatsapp: acf.whatsapp?.trim() || "",
+        email: acf.email?.trim() || "",
+        socials,
+        ...(Object.keys(insights).length > 0 ? { insights } : {}),
+    };
+}
+
+export async function getArtists(): Promise<Artist[]> {
+    const res = await fetch(`${WP}/artista?_embed&per_page=100`);
+    if (!res.ok) throw new Error(`WordPress ${res.status}`);
+    const data = (await res.json()) as WpArtist[];
+    return Promise.all(data.map(mapArtist));
+}
+
+export async function getArtistBySlug(
+    slug: string,
+): Promise<Artist | undefined> {
+    const res = await fetch(
+        `${WP}/artista?slug=${encodeURIComponent(slug)}&_embed`,
+    );
+    if (!res.ok) throw new Error(`WordPress ${res.status}`);
+    const data = (await res.json()) as WpArtist[];
+    const first = data[0];
+    return first ? mapArtist(first) : undefined;
+}
+
+/** Notícias que marcaram o artista no campo ACF `artistas`. */
+export async function getPostsByArtist(slug: string): Promise<Post[]> {
+    const [res, idToSlug] = await Promise.all([
+        fetch(`${WP}/posts?_embed&per_page=100`),
+        getArtistIdToSlug(),
+    ]);
+    if (!res.ok) throw new Error(`WordPress ${res.status}`);
+    const data = (await res.json()) as Parameters<typeof mapPost>[0][];
+    return data
+        .map((p) => mapPost(p, idToSlug))
+        .filter((p) => p.artistSlugs.includes(slug));
 }

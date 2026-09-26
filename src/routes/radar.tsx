@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getArtists } from "@/data/mockData";
+import { getArtists } from "@/data/wordpress";
 import { ArtistCard } from "@/components/ArtistCard";
 
 export const Route = createFileRoute("/radar")({
+  loader: async () => ({ artists: await getArtists() }),
   head: () => ({
     meta: [
       { title: "Radar de Artistas — SEGUE O FLUXO" },
@@ -21,7 +22,7 @@ export const Route = createFileRoute("/radar")({
 });
 
 function RadarPage() {
-  const artists = getArtists();
+  const { artists } = Route.useLoaderData();
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">

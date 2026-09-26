@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { getArtists } from "@/data/mockData";
+import { getArtists } from "@/data/wordpress";
 
 export const Route = createFileRoute("/artistas/")({
+  loader: async () => ({ artists: await getArtists() }),
   head: () => ({
     meta: [
       { title: "Artistas do funk — SEGUE O FLUXO" },
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/artistas/")({
 });
 
 function ArtistasPage() {
-  const artists = getArtists();
+  const { artists } = Route.useLoaderData();
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">

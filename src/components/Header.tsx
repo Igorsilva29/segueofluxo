@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Menu, Search, X, Instagram, Youtube, Music2, Send } from "lucide-react";
 import { Logo } from "./Logo";
-import { SITE, artists } from "@/data/mockData";
+import { SITE } from "@/data/mockData";
 import { searchPosts } from "@/data/wordpress";
 import type { Post } from "@/data/mockData";
 

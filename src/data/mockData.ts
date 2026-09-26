@@ -72,7 +72,11 @@ export interface Artist {
   city: string;
   whatsapp: string;
   email: string;
-  socials: { instagram?: string; youtube?: string; spotify?: string; tiktok?: string };
+  socials: { instagram?: string; youtube?: string; spotify?: string; tiktok?: string; deezer?: string};
+  insights?: {
+    youtubeSubscribers?: number;
+    deezerFans?: number;
+  };
 }
 
 export const SITE = {
