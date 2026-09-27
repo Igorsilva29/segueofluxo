@@ -81,13 +81,13 @@ export interface Artist {
 
 export const SITE = {
   name: "SEGUE O FLUXO",
-  tagline: "Portal independente de notícias e cultura funk. Feito no bairro, para o bairro.",
+  tagline: "Portal independente de notícias e cultura funk. Segue o fluxo e curte o baile.",
   instagram: "https://instagram.com/segueofluxooriginal",
   instagramHandle: "@segueofluxooriginal",
   tiktok: "https://tiktok.com/@segueofluxooriginal",
   youtube: "https://youtube.com/@segueofluxooriginal",
-  spotify: "https://open.spotify.com/playlist/37i9dQZF1DX2apWzyECwyZ",
-  spotifyEmbed: "https://open.spotify.com/embed/playlist/37i9dQZF1DX2apWzyECwyZ?utm_source=generator&theme=0",
+  spotify: "https://open.spotify.com/playlist/0TNsKRkilGp0VQHQY5Z8C1",
+  spotifyEmbed: "https://open.spotify.com/embed/playlist/0TNsKRkilGp0VQHQY5Z8C1?utm_source=generator&theme=1",
   whatsapp: "https://wa.me/5511999999999",
   email: "contato@segueofluxo.com.br",
   playlistCover,

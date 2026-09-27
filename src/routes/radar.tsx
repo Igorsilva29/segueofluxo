@@ -30,7 +30,7 @@ function RadarPage() {
         Radar do Funk
       </span>
       <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight mt-1">
-        Artistas em movimento
+        Artistas
       </h1>
       <p className="text-muted text-sm mt-3 max-w-lg">
         Quem está soltando som, lotando baile e movimentando a cena agora.

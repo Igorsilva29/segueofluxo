@@ -373,7 +373,7 @@ export async function getMostViewedPosts(limit = 5): Promise<Post[]> {
 
         const url =
             `https://public-api.wordpress.com/rest/v1.1/sites/${encodeURIComponent(blogId)}/stats/top-posts` +
-            `?period=day&num=7&max=${limit}`;
+            `?period=day&num=30&max=${limit}`;
 
         const res = await fetch(url, {
             headers: { Authorization: `Bearer ${token}` },

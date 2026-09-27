@@ -357,7 +357,7 @@ function Home() {
         <TooltipProvider delayDuration={250}>
           <nav
             aria-label="Categorias"
-            className="relative z-10 overflow-visible px-1 pt-3 pb-10"
+            className="relative z-10 flex justify-end overflow-visible px-1 pt-14 pb-4"
             onMouseLeave={() => setHoveredCategory(null)}
           >
             <div ref={stackRef} className="relative">
@@ -468,7 +468,7 @@ function Home() {
               Radar do Funk
             </span>
             <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight mt-1">
-              Artistas em movimento
+              Artistas
             </h2>
           </div>
           <Link to="/radar" className="shrink-0 text-[12px] text-muted hover:text-ink transition-colors">
@@ -493,7 +493,7 @@ function Home() {
               A playlist oficial do portal, atualizada toda semana
             </h2>
             <p className="text-muted text-sm mt-3 max-w-md">
-              O melhor que chegou no funk agora, curado pela nossa equipe. Toque, salve e
+              O melhor que chegou no funk agora, selecionado pela nossa equipe. Toque, salve e
               compartilhe com a galera.
             </p>
             <a
@@ -502,7 +502,7 @@ function Home() {
               rel="noreferrer"
               className="mt-5 inline-flex items-center gap-2 px-5 py-3 rounded-full bg-mint text-flow font-semibold text-sm hover:brightness-95 transition"
             >
-              <Play className="size-4 fill-flow" /> Siga nossa playlist no Spotify
+              <Play className="size-4 fill-flow" /> Siga nossa Playlist
             </a>
           </div>
           <div className="rounded-2xl bg-flow/60 border border-line p-4">
